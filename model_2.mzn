@@ -22,7 +22,7 @@ array[1..NUM_TRAINS, 1..SCHEDULED_ACTIONS_PER_TRAIN] of 0..NUM_ACTIONS: train_ac
 %------------------------
 
 array[1..NUM_TRAINS, 1..NUM_TIMESTEPS] of var 0..NUM_ACTIONS: train_schedule;
-array[1..NUM_TRAINS, 1..NUM_TIMESTEPS] of var 0..NUM_DRIVERS: driver_schedule;
+array[1..NUM_DRIVERS, 1..NUM_TIMESTEPS] of var 0..NUM_TRAINS: driver_schedule;
 
 %------------------------
 
@@ -94,6 +94,7 @@ constraint forall (p in 1..PAUSE_ACTION_PAIRS)(
     max([t | t in 1..NUM_TIMESTEPS where member(train_schedule[..,t], actions_require_pause_in_between[p,1])])
     < (min([t | t in 1..NUM_TIMESTEPS where member(train_schedule[..,t], actions_require_pause_in_between[p,2])]) - 1)
 );
+
 
 % driving only possible when operator inside, cannot be 
 constraint forall (x in 1..NUM_TRAINS, t in 1..(NUM_TIMESTEPS-2))(
