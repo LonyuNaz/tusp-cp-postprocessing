@@ -37,7 +37,6 @@ function var int: getMaxIndexOfValueGeqThan(array[int] of var int: arr, int: val
 %------------------------
 
 
-
 % do all actions that are scheduled for each train
 constraint forall (x in 1..NUM_TRAINS)(
     array2set(train_actions[x, ..]) 
@@ -60,19 +59,17 @@ constraint forall (x in 1..NUM_TRAINS)(
     train_schedule[x, 1] = 0
 );
 
-% minimum consecutive values for first timestep
-constraint forall (x in 1..NUM_TRAINS, t in 1..(NUM_TIMESTEPS-2))(
-    if (
-        (train_schedule[x, t-1] != train_schedule[x, t] /\ train_schedule[x, t] > 0)
-        \/
-        (t = 2 /\ train_schedule[x, t-1] > 0)
-    ) then (
-        sum([bool2int(train_schedule[x, tt] = train_schedule[x, t]) 
-        | tt in (t-1)..(t+action_durations[train_schedule[x, t]])])
-        = action_durations[train_schedule[x, t]]
-    )
-    endif
-);
+% % minimum consecutive values for first timestep
+% constraint forall (x in 1..NUM_TRAINS, t in 2..(NUM_TIMESTEPS-1))(
+%     if (
+%         train_schedule[x, t-1] != train_schedule[x, t] /\ train_schedule[x, t] > 0
+%     ) then (
+%         sum([bool2int(train_schedule[x, tt] = train_schedule[x, t]) 
+%         | tt in (t-1)..min(NUM_TIMESTEPS, (t+action_durations[train_schedule[x, t]]))])
+%         = action_durations[train_schedule[x, t]]
+%     )
+%     endif
+% );
 
 % do not do an action just because you can
 constraint global_cardinality(train_schedule, 1..NUM_ACTIONS, action_durations);
@@ -101,16 +98,16 @@ constraint forall (x in 1..NUM_TRAINS, t in 1..(NUM_TIMESTEPS-2))(
     if (
         train_schedule[x, t] > 0 \/ train_schedule[x, t+1] > 0 \/ train_schedule[x, t+2] > 0
     ) then (
-        member(driver_schedule[..,t+1], x)
+        member(col(driver_schedule,t+1), x)
     ) else (
-        not member(driver_schedule[..,t+1], x)
+        not member(col(driver_schedule, t+1), x)
     )
     endif
 );
 
 % at most 1 driver per train
 constraint forall (d in 1..NUM_DRIVERS, t in 1..NUM_TIMESTEPS)(
-    at_most(1, driver_schedule[..,t], d)
+    at_most(1, col(driver_schedule, t), d)
 );
 
 % when two drivers change position, there must be a gap in the schedule
@@ -131,16 +128,52 @@ constraint not exists (d in 1..NUM_DRIVERS, t in 1..(NUM_TIMESTEPS-1))(
     driver_schedule[d, t] > 0 /\ driver_schedule[d, t+1] > 0 /\ driver_schedule[d, t] != driver_schedule[d, t+1] 
 );
 
+% symmetry breaking constraint
+constraint symmetry_breaking_constraint(
+    member(row(driver_schedule, 1), 1)
+) ;
 
+% special constraint for the first 2 time steps
+constraint forall (d in 1..NUM_DRIVERS)(
+    if (
+        driver_schedule[d, 1] > 0
+    ) then (
+        train_schedule[driver_schedule[d, 1], 2] > 0
+        /\ train_schedule[driver_schedule[d, 1], 1] = 0
+    )
+    endif
+);
 
-% a
+% special constraint for the first 2 time steps
+constraint forall (x in 1..NUM_TRAINS)(
+    if (
+        train_schedule[x, 2] > 0
+    ) then (
+        exists (d in 1..NUM_DRIVERS)(
+            driver_schedule[d, 1] = x
+        )
+    )
+    endif
+);
 
 solve 
 % satisfy;
+::int_search(
+    train_schedule, 
+    first_fail, 
+    indomain_min
+    )
+::int_search(
+    driver_schedule, 
+    first_fail, 
+    indomain_min
+    )
 minimize max([
-    max([t | t in 1..NUM_TIMESTEPS where sum(train_schedule[..,t]) > 0]),
-    max([t | t in 1..NUM_TIMESTEPS where sum(driver_schedule[..,t]) > 0]),
-]);
+    max([t | t in 1..NUM_TIMESTEPS where sum(col(train_schedule,t)) > 0]),
+    max([t | t in 1..NUM_TIMESTEPS where sum(col(driver_schedule,t)) > 0]),
+]) 
+* sum([card(array2set(row(driver_schedule, d))) | d in 1..NUM_DRIVERS])
+;
 
 
 output(

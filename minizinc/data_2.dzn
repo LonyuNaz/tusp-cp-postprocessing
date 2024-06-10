@@ -1,0 +1,63 @@
+% NUM_TRAINS = 3;
+% NUM_TIMESTEPS = 72;
+NUM_ACTIONS = 12;
+NUM_DRIVERS = 2;
+
+D = [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3];
+
+% PAUSE_ACTION_PAIRS = 0;
+% actions_require_pause_in_between = 
+% [||];
+
+OVERLAP_ACTION_PAIRS = 24;
+actions_cannot_overlap = 
+[|3, 6,
+|5, 9,
+|7, 11,
+|8, 11,
+|2, 6,
+|7, 8,
+|8, 12,
+|10, 11,
+|2, 5,
+|7, 10,
+|1, 5,
+|5, 6,
+|6, 9,
+|3, 4,
+|11, 12,
+|6, 10,
+|9, 10,
+|2, 9,
+|1, 9,
+|6, 7,
+|2, 3,
+|1, 2,
+|3, 10,
+|2, 10|];
+
+ORDER_ACTION_PAIRS = 17;
+actions_must_start_before = 
+[|8, 12,
+|11, 12,
+|3, 6,
+|5, 9,
+|6, 7,
+|3, 4,
+|2, 3,
+|1, 2,
+|10, 11,
+|2, 5,
+|7, 10,
+|7, 8,
+|8, 11,
+|9, 10,
+|1, 5,
+|5, 6,
+|6, 9|];
+
+% SCHEDULED_ACTIONS_PER_TRAIN = 5;
+% train_actions = 
+% [|0,4,3,2,1,
+% |0,8,7,6,5,
+% |0,12,11,10,9|];
