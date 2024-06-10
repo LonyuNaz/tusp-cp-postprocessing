@@ -60,9 +60,10 @@ class PlanToDZN:
         self.tracks: List[Track] = list()
         self.movements: List[Movement] = list()
         self.turn_pairs: Set[Tuple[Movement, Movement]] = set()
-        self.no_overlap_pairs: Set[Tuple[Movement, Movement]] = set()
-        self.ordered_pairs: Set[Tuple[Movement, Movement]] = set()
-        self.durations: Set[Tuple[Movement, Movement]] = set()
+        self.precedence_constraints: Set[Tuple[Movement, Movement]] = set()
+        self.start_order_constraints: Set[Tuple[Movement, Movement]] = set()
+        self.non_overlap_constraints: Set[Tuple[Movement, Movement]] = set()
+        self.durations: List[int] = list()
 
 
     def create_from_file(self, filepath: str):
@@ -71,9 +72,10 @@ class PlanToDZN:
         self._extract_movements()
         if not self.turns_included:
             self._add_turns()
-        self._non_overlap_pairs()
-        self._ordered_pairs()
         self._add_durations()
+        self._precedences()
+        self._non_overlap_pairs()
+        self._start_precedences()
         self._write_dzn()
 
     def _load_file(self, filepath: str):
@@ -162,19 +164,38 @@ class PlanToDZN:
                 if train.movements[i].direction != train.movements[i+1].direction:
                     self.turn_pairs.add((train.movements[i], train.movements[i+1]))
 
-    def _non_overlap_pairs(self):
-        self.no_overlap_pairs = set()
+    def _start_precedences(self):
+        for track in self.tracks:
+            if len(track.movements) <= 1:
+                continue
+            for i in range(len(track.movements)-1):
+                if track.movements[i].origin == track.movements[i+1].origin and\
+                    track.movements[i].destination == track.movements[i+1].destination:
+                    self.start_order_constraints.add((track.movements[i], 
+                                                track.movements[i+1]))
+                else:
+                    self.precedence_constraints.add((track.movements[i], 
+                                                track.movements[i+1]))
+
+    def _precedences(self):
+        self.precedence_constraints = set()
         for train in self.trains:
             if len(train.movements) <= 1:
                 continue
             for i in range(len(train.movements)-1):
-                self.no_overlap_pairs.add((train.movements[i], 
+                self.precedence_constraints.add((train.movements[i], 
                                             train.movements[i+1]))
 
+    def _non_overlap_pairs(self):
         for i in range(len(self.movements)-1):
             for j in range(i+1, len(self.movements)):
                 if self.movements[j].destination in (self.movements[i].origin, self.movements[i].destination):
-                    self.no_overlap_pairs.add((self.movements[i], self.movements[j])) 
+                    pair = (self.movements[i], self.movements[j])
+                    if self.movements[i].origin != self.movements[j].origin or\
+                        self.movements[i].destination != self.movements[j].destination:
+                        if pair not in self.precedence_constraints:
+                            self.non_overlap_constraints.add((self.movements[i], self.movements[j])) 
+                        
 
     def _ordered_pairs(self):
         self.ordered_pairs = set()
@@ -185,48 +206,53 @@ class PlanToDZN:
                 self.ordered_pairs.add((track.movements[i], track.movements[i+1]))       
             
     def _add_durations(self):
-        self.durations = set()
+        self.durations = list()
         for movement in self.movements:
             # TODO: change to dynamic durations
-            self.durations.add((movement, 3))
+            self.durations.append(3)
+
+    def _np_to_dzn_arr(self, arr):
+        if len(np.shape(arr)) > 2:
+            raise Exception('Not supported arrays with >2 dimensions')
+        if len(np.shape(arr)) > 1 and np.shape(arr)[1] > 1 and np.shape(arr)[0] > 1:
+            return '[|' + ',\n|'.join(','.join(str(int(x)) for x in moves) for moves in arr) + '|]'
+        else:
+            return '[' + ','.join(str(int(x)) for x in arr) + ']'
 
     def _write_dzn(self):
         if os.path.exists('minizinc/data.dzn'):
             os.remove('minizinc/data.dzn')
 
-        turn_pairs_str = '[|' + ',\n|'.join(f'{p[0].id}, {p[1].id}' for p in self.turn_pairs) + '|];\n'
-        overlap_pairs_str = '[|' + ',\n|'.join(f'{p[0].id}, {p[1].id}' for p in self.no_overlap_pairs) + '|];\n'
-        order_pairs_str = '[|' + ',\n|'.join(f'{p[0].id}, {p[1].id}' for p in self.ordered_pairs) + '|];\n'
-        
-        max_movements = max(len(t.movements) for t in self.trains) + 1
-        train_movement_ids = np.zeros((len(self.trains), max_movements))
-        for i in range(len(self.trains)):
-            for j in range(len(self.trains[i].movements)):
-                train_movement_ids[i,-(j+1)] = self.trains[i].movements[j].id
-        train_movements_str = '[|' + ',\n|'.join(','.join(str(int(x)) for x in moves) for moves in train_movement_ids) + '|];\n'
+        self.precedence_constraints = sorted(self.precedence_constraints, key=lambda x: x[0].id)
+        self.start_order_constraints = sorted(self.start_order_constraints, key=lambda x: x[0].id)
+        self.non_overlap_constraints = sorted(self.non_overlap_constraints, key=lambda x: x[0].id)
+
+        preceding_str = self._np_to_dzn_arr([pc[0].id for pc in self.precedence_constraints])
+        anteceding_str = self._np_to_dzn_arr([pc[1].id for pc in self.precedence_constraints])
+        start_early_str = self._np_to_dzn_arr([so[0].id for so in self.start_order_constraints])
+        start_later_str = self._np_to_dzn_arr([so[1].id for so in self.start_order_constraints])
+        overlap_left_str = self._np_to_dzn_arr([ov[0].id for ov in self.non_overlap_constraints])
+        overlap_right_str = self._np_to_dzn_arr([ov[1].id for ov in self.non_overlap_constraints])
 
         with open('minizinc/data.dzn', 'w') as f:
             f.writelines([
                 f'NUM_TRAINS = {len(self.trains)};\n',
-                f'NUM_TIMESTEPS = {int(2*sum(d[1] for d in self.durations))};\n',
                 f'NUM_ACTIONS = {len(self.movements)};\n',
                 f'NUM_DRIVERS = {self.num_drivers};\n',
                 '\n',
-                f'action_durations = {str([d[1] for d in self.durations])};\n',
+                f'D = {self._np_to_dzn_arr(self.durations)};\n',
+                f'TA = {self._np_to_dzn_arr([m.train.id for m in self.movements])};\n',
                 '\n',
-                f'PAUSE_ACTION_PAIRS = {len(self.turn_pairs)};\n',
-                f'actions_require_pause_in_between = \n',
-                turn_pairs_str,
+                f'NUM_PRECEDENCE_CONSTRAINTS = {len(self.precedence_constraints)};\n',
+                f'preceding = {preceding_str};\n',
+                f'anteceding = {anteceding_str};\n',
                 '\n',
-                f'OVERLAP_ACTION_PAIRS = {len(self.no_overlap_pairs)};\n',
-                f'actions_cannot_overlap = \n',
-                overlap_pairs_str,
+                f'NUM_START_ORDER_CONSTRAINTS = {len(self.start_order_constraints)};\n',
+                f'start_early = {start_early_str};\n',
+                f'start_later = {start_later_str};\n',
                 '\n',
-                f'ORDER_ACTION_PAIRS = {len(self.ordered_pairs)};\n',
-                f'actions_must_start_before = \n',
-                order_pairs_str,
+                f'NUM_OVERLAP_CONSTRAINS = {len(self.non_overlap_constraints)};\n',
+                f'overlap_left = {overlap_left_str};\n',
+                f'overlap_right = {overlap_right_str};\n',
                 '\n',
-                f'SCHEDULED_ACTIONS_PER_TRAIN = {max_movements};\n',
-                'train_actions = \n',
-                train_movements_str,
             ])

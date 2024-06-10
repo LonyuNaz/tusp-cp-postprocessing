@@ -23,11 +23,13 @@ def parse_output_json():
     for idx, line in enumerate(lines):
         line_dict = json.loads(line)
         if line_dict['type'] == 'solution':
-            [train_schedule, driver_schedule] = line_dict['output']["default"].split('][')
-    return mzn_arr_to_numpy(train_schedule), mzn_arr_to_numpy(driver_schedule)
+            all_arr_str = line_dict['output']["default"].split('][')
+            arrays = []
+            for arr_str in all_arr_str:
+                arrays.append([int(x) for x in arr_str.replace(']','').replace('[','').split(',')])
+    return arrays
 
 
 def run_mzn(timeout_seconds: int, solver_name: str):
     run_and_wait_for_output(timeout_seconds, solver_name)
-    train_schedule, driver_schedule = parse_output_json()
-    return train_schedule, driver_schedule
+    return parse_output_json()

@@ -1,0 +1,19 @@
+NUM_TRAINS = 3;
+NUM_ACTIONS = 12;
+NUM_DRIVERS = 2;
+
+D = [3,3,3,3,3,3,3,3,3,3,3,3];
+TA = [1,1,1,1,2,2,2,2,3,3,3,3];
+
+NUM_PRECEDENCE_CONSTRAINTS = 14;
+preceding = [1,2,2,3,3,5,6,6,7,7,8,9,10,11];
+anteceding = [2,5,3,4,6,6,9,7,8,10,11,10,11,12];
+
+NUM_START_ORDER_CONSTRAINTS = 3;
+start_early = [1,5,8];
+start_later = [5,9,12];
+
+NUM_OVERLAP_CONSTRAINS = 7;
+overlap_left = [2,2,3,3,6,7,8];
+overlap_right = [5,9,10,6,9,10,11];
+
