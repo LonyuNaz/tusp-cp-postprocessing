@@ -3,7 +3,7 @@ import json
 import numpy as np
 
 OUTPUT_FILE_NAME = 'minizinc/solution.json'
-MODEL_NAME = 'minizinc/model_2.mzn'
+MODEL_NAME = 'minizinc/model.mzn'
 DZN_NAME = 'minizinc/data.dzn'
 
 def mzn_arr_to_numpy(arr_str):
