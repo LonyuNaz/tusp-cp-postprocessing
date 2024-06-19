@@ -60,6 +60,7 @@ class PlanToDZN:
         self.tracks: List[Track] = list()
         self.movements: List[Movement] = list()
         self.turn_pairs: Set[Tuple[Movement, Movement]] = set()
+        self.dontstop_pairs: Set[Tuple[Movement, Movement]] = set()
         self.precedence_constraints: Set[Tuple[Movement, Movement]] = set()
         self.turn_constraints: Set[Tuple[Movement, Movement]] = set()
         self.start_order_constraints: Set[Tuple[Movement, Movement]] = set()
@@ -74,9 +75,10 @@ class PlanToDZN:
         if not self.turns_included:
             self._add_turns()
         self._add_durations()
+        self._add_dontstop()
         self._precedences()
-        self._non_overlap_pairs()
         self._start_precedences()
+        self._non_overlap_pairs()
         self._write_dzn()
 
     def _load_file(self, filepath: str):
@@ -125,7 +127,9 @@ class PlanToDZN:
     def get_movement(self, id) -> Movement:
         return next((m for m in self.movements if m.id == id), None)
 
-        
+    def movement_labels(self) -> List[str]:
+        return [f'Train {m.train.id}: [{m.origin.name}]-->[{m.destination.name}]' for m in self.movements]
+    
     # def load_string(self, plan_str: str):
     #     self.plan_lines = [re.findall(r'\(.*\)', line)[0][1:-1] 
     #                     for line in plan_str.split('\n') 
@@ -165,20 +169,33 @@ class PlanToDZN:
                 if train.movements[i].direction != train.movements[i+1].direction:
                     self.turn_pairs.add((train.movements[i], train.movements[i+1]))
 
+    def _add_dontstop(self):
+        for train in self.trains:
+            if len(train.movements) <= 1:
+                continue
+            for i in range(len(train.movements)-1):
+                if train.movements[i+1].origin.name.startswith('track_s_'):
+                    self.dontstop_pairs.add((train.movements[i], train.movements[i+1]))
+
     def _start_precedences(self):
         for track in self.tracks:
             if len(track.movements) <= 1:
                 continue
             for i in range(len(track.movements)-1):
-                pair = (track.movements[i], track.movements[i+1])
-                if track.movements[i+1].destination in\
-                      (track.movements[i].origin, track.movements[i].destination) and\
-                    (track.movements[i+1].direction != track.movements[i].direction):
-                    self.precedence_constraints.add(pair)
-                elif pair not in self.precedence_constraints.union(self.turn_constraints) and\
-                    track.movements[i+1].direction == track.movements[i].direction and\
-                    track.movements[i+1].origin == track.movements[i].origin:
-                    self.start_order_constraints.add(pair)
+                for j in range(i+1, len(track.movements)):
+                    pair = (track.movements[i], track.movements[j])
+                    if pair in self.turn_constraints or pair in self.precedence_constraints:
+                        continue
+                    if pair[0].destination == pair[1].destination and\
+                        pair[0].origin == pair[1].origin:
+                            self.start_order_constraints.add(pair)
+                    elif (bool(pair[0].destination == pair[1].destination) ^\
+                            bool(pair[0].origin == pair[1].origin)) and\
+                                pair[0].direction == pair[1].direction:
+                            self.precedence_constraints.add(pair)
+                    elif pair[1].destination == pair[0].origin:
+                        if pair[0].direction != pair[1].direction:
+                            self.precedence_constraints.add(pair)
 
     def _precedences(self):
         self.precedence_constraints = set()
@@ -186,23 +203,26 @@ class PlanToDZN:
             if len(train.movements) <= 1:
                 continue
             for i in range(len(train.movements)-1):
-                if train.movements[i+1].direction == train.movements[i].direction:
-                    self.precedence_constraints.add((train.movements[i], 
-                                                train.movements[i+1]))
-                else:
-                    self.turn_constraints.add((train.movements[i], 
-                                                train.movements[i+1]))
+                for j in range(i+1, len(train.movements)):
+                    pair = (train.movements[i],  train.movements[j])
+                    if pair[0].direction == pair[1].direction:
+                        self.precedence_constraints.add(pair)
+                    else:
+                        self.turn_constraints.add(pair)
 
     def _non_overlap_pairs(self):
         for i in range(len(self.movements)-1):
             for j in range(i+1, len(self.movements)):
-                if self.movements[j].destination in (self.movements[i].origin, self.movements[i].destination):
-                    pair = (self.movements[i], self.movements[j])
-                    if self.movements[j].destination in\
-                      (self.movements[i].origin, self.movements[i].destination) and\
-                    (self.movements[j].direction != self.movements[i].direction):
-                        if pair not in self.precedence_constraints.union(self.turn_constraints):
-                            self.non_overlap_constraints.add((self.movements[i], self.movements[j])) 
+                pair = (self.movements[i], self.movements[j])
+                if pair in self.precedence_constraints or\
+                    pair in self.turn_constraints or\
+                    pair in self.start_order_constraints:
+                    continue
+                if (bool(pair[0].origin != pair[1].origin) ^\
+                    bool(pair[0].destination != pair[1].destination)) and\
+                    pair[0].direction != pair[1].direction:
+                        self.non_overlap_constraints.add(pair) 
+                    
                         
 
     def _ordered_pairs(self):
@@ -238,6 +258,8 @@ class PlanToDZN:
 
         preceding_str = self._np_to_dzn_arr([pc[0].id for pc in self.precedence_constraints])
         anteceding_str = self._np_to_dzn_arr([pc[1].id for pc in self.precedence_constraints])
+        ds_left_str = self._np_to_dzn_arr([ds[0].id for ds in self.dontstop_pairs])
+        ds_right_str = self._np_to_dzn_arr([ds[1].id for ds in self.dontstop_pairs])
         before_turn_str = self._np_to_dzn_arr([tc[0].id for tc in self.turn_constraints])
         after_turn_str = self._np_to_dzn_arr([tc[1].id for tc in self.turn_constraints])
         start_early_str = self._np_to_dzn_arr([so[0].id for so in self.start_order_constraints])
@@ -269,5 +291,9 @@ class PlanToDZN:
                 f'NUM_OVERLAP_CONSTRAINS = {len(self.non_overlap_constraints)};\n',
                 f'overlap_left = {overlap_left_str};\n',
                 f'overlap_right = {overlap_right_str};\n',
+                '\n',
+                f'NUM_DONT_STOP_CONSTRAINTS = {len(self.dontstop_pairs)};\n',
+                f'dont_stop_before = {ds_left_str};\n',
+                f'dont_stop_after = {ds_right_str};\n',
                 '\n',
             ])

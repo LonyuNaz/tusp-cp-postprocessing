@@ -53,7 +53,6 @@ def extend_plan(plan_file: str, yard_json_file: str, entry_track_map: dict):
             [track_from, track_to] = re.findall(r'track_\w+', line)
             track_from = track_from.split('track_')[1]
             track_to = track_to.split('track_')[1]
-            print(yard_graph.nodes)
             short_path = networkx.shortest_path(yard_graph, track_from, track_to)
             if len(short_path) > 2:
                 for i in range(len(short_path)-1):
@@ -63,5 +62,6 @@ def extend_plan(plan_file: str, yard_json_file: str, entry_track_map: dict):
         else:
             new_lines.append(line)
    
-    with open('ext_plan.plan', 'w') as f:
+    [name, extension] = plan_file.split('.')
+    with open(name+'_ext.'+extension, 'w') as f:
         f.write('\n'.join(new_lines))

@@ -10,7 +10,7 @@ array[1..NUM_ACTIONS] of int: D;                            % durations
 array[1..NUM_ACTIONS] of 1..NUM_TRAINS: TA;                 % train assignments: which train does which task
 
 %-------------------------------
-int: TOTAL_DURATION = 2*sum(D);                             % total duration
+int: TOTAL_DURATION = 2*sum(D)+1;                             % total duration
 
 %-------------------------------
 int: NUM_PRECEDENCE_CONSTRAINTS;
@@ -29,11 +29,14 @@ int: NUM_OVERLAP_CONSTRAINS;
 array[1..NUM_OVERLAP_CONSTRAINS] of 1..NUM_ACTIONS: overlap_left;
 array[1..NUM_OVERLAP_CONSTRAINS] of 1..NUM_ACTIONS: overlap_right;
 
+int: NUM_DONT_STOP_CONSTRAINTS;
+array[1..NUM_DONT_STOP_CONSTRAINTS] of 1..NUM_ACTIONS: dont_stop_before;
+array[1..NUM_DONT_STOP_CONSTRAINTS] of 1..NUM_ACTIONS: dont_stop_after;
+
 %-------------------------------
-array[1..NUM_ACTIONS] of var 0..TOTAL_DURATION: S;          % start times
+array[1..NUM_ACTIONS] of var 1..TOTAL_DURATION: S;          % start times
 array[1..NUM_ACTIONS] of var 1..NUM_DRIVERS: DA;            % driver assignments
-var 0..TOTAL_DURATION: end;                                 % total end time
-var 0..(NUM_TRAINS*TOTAL_DURATION): TT;                     % train times
+var 1..TOTAL_DURATION: end;                                 % total end time
 %-------------------------------
 
 % precedence constraints
@@ -41,9 +44,14 @@ constraint forall (p in 1..NUM_PRECEDENCE_CONSTRAINTS)(
     (S[preceding[p]] + D[preceding[p]]) <= S[anteceding[p]]
 );
 
-% precedence constraints
+% turn constraints
 constraint forall (tc in 1..NUM_TURN_CONSTRAINTS)(
     (S[before_turn[tc]] + D[before_turn[tc]]) < S[after_turn[tc]]
+);
+
+% do not stop (on switches for example) constraints
+constraint forall (ds in 1..NUM_DONT_STOP_CONSTRAINTS)(
+    (S[dont_stop_before[ds]] + D[dont_stop_before[ds]]) = S[dont_stop_after[ds]]
 );
 
 % start order constraints, less strict than precedence
@@ -51,7 +59,7 @@ constraint forall (s in 1..NUM_START_ORDER_CONSTRAINTS)(
     S[start_early[s]] < S[start_later[s]]
 );
 
-% redundant constraint: precedence implies non overlap
+% redundant constraint: strict precedence implies non overlap
 constraint forall (p in 1..NUM_PRECEDENCE_CONSTRAINTS)(
     disjunctive(
         [S[preceding[p]], S[anteceding[p]]],
@@ -67,7 +75,7 @@ constraint forall (tc in 1..NUM_TURN_CONSTRAINTS)(
     )
 );
 
-% ensure no overlap of tasks
+% some task physically are not allowed to happen at the same time
 constraint forall (o in 1..NUM_OVERLAP_CONSTRAINS) (
     disjunctive(
         [S[overlap_left[o]], S[overlap_right[o]]],
@@ -82,8 +90,8 @@ constraint forall (a1 in 1..(NUM_ACTIONS-1))(
         if (
             (DA[a1] != DA[a2] xor TA[a1] != TA[a2])
         ) then (
-            (S[a1] + D[a1] < S[a2])
-            \/ (S[a2] + D[a2] < S[a1])
+            ((S[a1] + D[a1]) < (S[a2] - 1))
+            \/ ((S[a2] + D[a2]) < (S[a1] - 1))
         )
         endif
     )    
@@ -102,17 +110,10 @@ constraint forall(i in 1..NUM_ACTIONS)(
     S[i] + D[i] <= end
 );
 
-constraint (
-    TT = sum(t in 1..NUM_TRAINS)(
-            max([S[a] + D[a] | a in 1..NUM_ACTIONS where TA[a] = t])
-            -min([S[a] | a in 1..NUM_ACTIONS where TA[a] = t])
-        )
-);
-
 
 solve 
 ::int_search(S, smallest, indomain_min)
-minimize TOTAL_DURATION*NUM_TRAINS*end + TT;
+minimize end;
 
 output(
         [

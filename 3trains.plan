@@ -1,0 +1,6 @@
+(move_Aside_across_tracks train_ddz_1 track_entry track_t_401)
+(move_Aside_across_tracks train_ddz_2 track_entry track_t_403)
+(start_parking train_ddz_1 track_t_401)
+(start_parking train_ddz_2 track_t_403)
+(move_Aside_across_tracks train_ddz_3 track_entry track_t_403)
+(start_parking train_ddz_3 track_t_403)

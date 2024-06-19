@@ -46,22 +46,4 @@ if __name__ == '__main__':
     print('3. Running Minizinc model')
     [start_times, durations, action_driver, action_train] = run_mzn(mzn_timeout, mzn_solver)
     print('4. Converting Minizinc output to schedule')
-    train_schedule = np.ones((np.max(action_train),np.max(start_times)+np.max(durations))) * (len(start_times)+1)
-    for i in range(len(start_times)):
-        train_id = action_train[i]-1
-        train_schedule[train_id,start_times[i]:start_times[i]+durations[i]] = i
-    plt.figure(figsize=(40,30))
-    im = plt.imshow(train_schedule, aspect='auto', cmap='tab20b')
-    # get the colors of the values, according to the 
-    # colormap used by imshow
-    labels = [f'{m.origin.name}-->{m.destination.name}' for m in p2d.movements]
-    colors = [ im.cmap(im.norm(i)) for i in range(len(labels)+1)]
-    # create a patch (proxy artist) for every color 
-    patches = [ mpatches.Patch(color=colors[i], label=labels[i] ) for i in range(len(labels)) ]
-    # put those patched as legend-handles into the legend
-
-    plt.legend(handles=patches, bbox_to_anchor=(1.05, 1), loc=2)
-    plt.grid(True)
-    plt.tight_layout()
-    plt.savefig('output/train_schedule.png')
     
